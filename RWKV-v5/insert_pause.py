@@ -38,8 +38,11 @@ def uniform_random_insert(p: float, seq: np.ndarray) -> np.ndarray:
     temp = []
     for token in seq[:-1]:
         temp.append(token)
-        while random.random() < p:
+        
+        pause_len = 0
+        while random.random() < p and pause_len < MAX_PAUSE_LEN:
             temp.append(PAUSE_TOKEN)
+            pause_len += 1
     temp.append(seq[-1])
     return np.array(temp, dtype=np.uint16)
 
@@ -58,6 +61,7 @@ IN_NAME = sys.argv[1].strip()
 OUT_NAME = sys.argv[2].strip()
 P_MAX = float(sys.argv[3].strip())
 PAUSE_TOKEN = int(sys.argv[4].strip())
+MAX_PAUSE_LEN = 128 # needed to limit amount of tokens we have to fetch in the dataset loader
 
 print("Adding pause tokens to dataset...")
 print(f"    Input files:  {IN_NAME}.bin, {IN_NAME}.idx")

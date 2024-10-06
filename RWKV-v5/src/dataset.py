@@ -149,7 +149,7 @@ class MyDataset(Dataset):
 
             if args.data_type == "binidx":
                 if args.my_pile_version == 1:
-                    dix = data.get(idx=0, offset=i, length=req_len if args.my_pause_token == -1 else None).astype(int)
+                    dix = data.get(idx=0, offset=i, length=req_len + (0 if args.my_pause_token == -1 else 128)).astype(int)
                 else:
                     # self.data : cutoff, chunk_count, data
                     for j in range(len(data)):
@@ -185,16 +185,16 @@ class MyDataset(Dataset):
                         dix = self.data_pile.get(idx=0, offset=i, length=req_len).astype(int)
                 z = torch.tensor(z, dtype=torch.bfloat16)
             elif args.my_pause_token != -1:
-                assert dix[-1] != args.my_pause_token
-                z = dix[1:req_len] == args.my_pause_token
+                indices = np.arange(dix.shape[0])
+                indices = np.where(dix != args.my_pause_token, indices, dix.shape[0])
+                indices = np.minimum.accumulate(indices[::-1])[::-1]
                 
-                unique_toks, unique_indices = torch.unique_consecutive(dix, return_inverse=True)
-                unique_indices += 1
-                unique_indices[-1] = 0 # prevent out of bounds
-                y = torch.where(z, unique_toks[unique_indices[1:req_len]], dix[1:req_len])
+                x = torch.tensor(dix[:ctx_len], dtype=torch.long)
+                y = torch.tensor(dix[indices[1:req_len]], dtype=torch.long)
+                z = torch.tensor(dix[1:req_len] == args.my_pause_token, dtype=torch.bfloat16)
 
-            x = torch.tensor(dix[:-1], dtype=torch.long)
             if args.my_pause_token == -1:
+                x = torch.tensor(dix[:-1], dtype=torch.long)
                 y = torch.tensor(dix[1:], dtype=torch.long)
 
             # if ii_orig < 50:
