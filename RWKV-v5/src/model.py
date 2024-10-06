@@ -1098,6 +1098,7 @@ class RWKV(pl.LightningModule):
             idx, targets = batch
             logits = self(idx)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            loss = L2Wrap.apply(loss)
             # if '0' in os.environ["RWKV_MY_TESTING"]:
             #     print('logits', logits)
             #     torch.set_printoptions(threshold=10000)
@@ -1118,6 +1119,7 @@ class RWKV(pl.LightningModule):
                 loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), reduction='none')
                 # loss_raw = loss
                 loss = torch.sum(loss * mask) / sum_mask
+            loss = L2Wrap.apply(loss)
 
                 # torch.set_printoptions(threshold=10000)
                 # if True: #self.global_rank == 1:
@@ -1132,24 +1134,29 @@ class RWKV(pl.LightningModule):
                 #     print('rank', self.global_rank, 'loss', loss.item(), 'lavg', sss / ccc)#, 'tmp', tmp, 'input', idx)
         else:
             idx, targets = batch
+            mask = (targets == args.my_pause_token).view(-1)[:-1]
+            logits = self(idx)
             
             # Replace pause tokens with next non-pause token
             unique_toks, unique_indices = torch.unique_consecutive(targets.view(-1), return_inverse=True)
             unique_toks = torch.cat((unique_toks, torch.tensor([0]))) # prevent out of bounds
             unique_indices += 1
-            real_targets = torch.where(targets == args.my_pause_token, unique_toks[next_non_pause].view_as(targets), targets)
+            targets = torch.where(targets == args.my_pause_token, unique_toks[unique_indices].view_as(targets), targets)
             
-            logits = self(idx)
+            # Separate logits from predicted loss deltas
+            predicted_deltas = logits[:, :, args.my_pause_token].view(-1)[:-1]
+            logits = torch.cat((logits[:, :, :args.my_pause_token], logits[:, :, args.my_pause_token + 1:]), dim=-1)
             
-            logits = logits.view(-1, logits.size(-1))
-            targets = targets.view(-1)
-            real_targets = real_targets.view(-1)
-            mask = targets != args.my_pause_token
+            # Calculate logit loss and estimated delta loss
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), reduction='none')
             
-            loss = F.cross_entropy(logits, real_targets, reduction='none')
-            loss = torch.sum(loss * mask) / torch.sum(mask)
+            deltas = loss[1:] - loss[:-1]
+            mse_loss = F.mse_loss(predicted_deltas, deltas, reduction='none')
+            mse_loss = (mse_loss * mask).sum() / mask.sum() if mask.sum() > 0 else 0
+            
+            loss = L2Wrap.apply(loss.mean(), logits) + mse_loss
 
-        return L2Wrap.apply(loss, logits)
+        return loss
 
     def training_step_end(self, batch_parts):
         if pl.__version__[0]!='2':
