@@ -1,13 +1,16 @@
 """
-Usage: python insert_pause.py base_in_path base_out_path maximum_p pause_token_idx
+IMPORTANT: ctx_len MUST be set to the training ctx len to prevent data leakage between documents.
+
+Usage: python insert_pause.py base_in_path base_out_path maximum_p pause_token_idx ctx_len
 Where:
     base_in_path    = the name of the .idx and .bin files to insert pause tokens into, but without their extensions. Example: `data/minipile` for `data/minipile.bin`
     base_out_path   = name of the output .idx and .bin files without their extensions. Example: `output` for `output.bin` and `output.idx`
     maximum_p       = decimal value of the maximum pause token percent. The average amount will be half this value. Example: 0.2 means a training example can have at most 20% pause tokens, a minimum of 0%, and an average of 10%.
     pause_token_idx = index of the pause token in your vocabulary
+    ctx_len         = Context size of the dataset. IMPORTANT: This must be set correctly to prevent leakage between documents.
 
 Example:
-python insert_pause.py data/minipile data/minipile_with_pauses 0.2 65530
+python insert_pause.py data/minipile data/minipile_with_pauses 0.2 65530 512
 """
 
 import numpy as np
@@ -36,28 +39,35 @@ class MMapIndexedDatasetBuilder(object):
 
 def uniform_random_insert(p: float, seq: np.ndarray) -> np.ndarray:
     temp = []
-    for token in seq[:-1]:
+    len = 0
+    for token in seq:
         temp.append(token)
-        while random.random() < p:
+        len += 1
+        while random.random() < p and len < CTX_LEN:
             temp.append(PAUSE_TOKEN)
-    temp.append(seq[-1])
+            len += 1
+        if len == CTX_LEN + 1:
+            break
     return np.array(temp, dtype=np.uint16)
 
 
-if len(sys.argv) != 5:
+if len(sys.argv) != 6:
     print("Invalid number of arguments.")
-    print("Usage: python insert_pause.py in_base_path out_base_path maximum_p pause_token_idx")
+    print("Usage: python insert_pause.py in_base_path out_base_path maximum_p pause_token_idx ctx_len")
     print("Where:")
     print("    in_base_path    = the name of the .idx and .bin files to insert pause tokens into, but without their extensions. Example: `data/minipile` for `data/minipile.bin`")
     print("    out_base_path   = name of the output .idx and .bin files without their extensions. Example: `output` for `output.bin` and `output.idx`")
     print("    maximum_p       = decimal value of the maximum pause token percent. The average amount will be half this value. Example: 0.2 means a training example can have at most 20% pause tokens, a minimum of 0%, and an average of 10%.")
     print("    pause_token_idx = index of the pause token in your vocabulary")
+    print("    ctx_len         = Context size of the dataset. IMPORTANT: This must be set correctly to prevent leakage between documents.")
+    print("\n\nIMPORTANT: ctx_len MUST be set to the training ctx len to prevent data leakage between documents.")
     quit()
 
 IN_NAME = sys.argv[1].strip()
 OUT_NAME = sys.argv[2].strip()
-PAUSE_TOKEN = int(sys.argv[4].strip())
 P_MAX = float(sys.argv[3].strip())
+PAUSE_TOKEN = int(sys.argv[4].strip())
+CTX_LEN = int(sys.argv[5].strip())
 
 dataset = MMapIndexedDataset(IN_NAME)
 builder = MMapIndexedDatasetBuilder(f"{OUT_NAME}.bin")

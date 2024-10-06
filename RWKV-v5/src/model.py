@@ -1094,7 +1094,7 @@ class RWKV(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         args = self.args
-        if args.my_qa_mask != 1:
+        if args.my_qa_mask != 1 and args.my_pause_token == -1:
             idx, targets = batch
             logits = self(idx)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
@@ -1103,7 +1103,7 @@ class RWKV(pl.LightningModule):
             #     torch.set_printoptions(threshold=10000)
             #     print('idx', idx)
             #     exit(0)
-        else:
+        elif args.my_qa_mask == 1:
             idx, targets, mask = batch
             mask = mask.view(-1)
             sum_mask = torch.sum(mask).item()
@@ -1130,6 +1130,24 @@ class RWKV(pl.LightningModule):
                 #             sss += loss_raw.view(-1)[i].float().item()
                 #             ccc += 1
                 #     print('rank', self.global_rank, 'loss', loss.item(), 'lavg', sss / ccc)#, 'tmp', tmp, 'input', idx)
+        else:
+            idx, targets = batch
+            
+            # Replace pause tokens with next non-pause token
+            unique_toks, unique_indices = torch.unique_consecutive(targets.view(-1), return_inverse=True)
+            unique_toks = torch.cat((unique_toks, torch.tensor([0]))) # prevent out of bounds
+            unique_indices += 1
+            real_targets = torch.where(targets == args.my_pause_token, unique_toks[next_non_pause].view_as(targets), targets)
+            
+            logits = self(idx)
+            
+            logits = logits.view(-1, logits.size(-1))
+            targets = targets.view(-1)
+            real_targets = real_targets.view(-1)
+            mask = targets != args.my_pause_token
+            
+            loss = F.cross_entropy(logits, real_targets, reduction='none')
+            loss = torch.sum(loss * mask) / torch.sum(mask)
 
         return L2Wrap.apply(loss, logits)
 
