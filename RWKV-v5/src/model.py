@@ -1133,15 +1133,9 @@ class RWKV(pl.LightningModule):
                 #             ccc += 1
                 #     print('rank', self.global_rank, 'loss', loss.item(), 'lavg', sss / ccc)#, 'tmp', tmp, 'input', idx)
         else:
-            idx, targets = batch
-            mask = (targets == args.my_pause_token).view(-1)[:-1]
+            idx, targets, mask = batch
+            mask = mask.view(-1)[:-1]
             logits = self(idx)
-            
-            # Replace pause tokens with next non-pause token
-            unique_toks, unique_indices = torch.unique_consecutive(targets.view(-1), return_inverse=True)
-            unique_toks = torch.cat((unique_toks, torch.tensor([0]))) # prevent out of bounds
-            unique_indices += 1
-            targets = torch.where(targets == args.my_pause_token, unique_toks[unique_indices].view_as(targets), targets)
             
             # Separate logits from predicted loss deltas
             predicted_deltas = logits[:, :, args.my_pause_token].view(-1)[:-1]

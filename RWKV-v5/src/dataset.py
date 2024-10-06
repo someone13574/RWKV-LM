@@ -149,7 +149,7 @@ class MyDataset(Dataset):
 
             if args.data_type == "binidx":
                 if args.my_pile_version == 1:
-                    dix = data.get(idx=0, offset=i, length=req_len).astype(int)
+                    dix = data.get(idx=0, offset=i, length=req_len if args.my_pause_token == -1 else None).astype(int)
                 else:
                     # self.data : cutoff, chunk_count, data
                     for j in range(len(data)):
@@ -184,9 +184,18 @@ class MyDataset(Dataset):
                         i = np.random.randint(0, self.data_pile_size - req_len)
                         dix = self.data_pile.get(idx=0, offset=i, length=req_len).astype(int)
                 z = torch.tensor(z, dtype=torch.bfloat16)
+            elif args.my_pause_token != -1:
+                assert dix[-1] != args.my_pause_token
+                z = dix[1:req_len] == args.my_pause_token
+                
+                unique_toks, unique_indices = torch.unique_consecutive(dix, return_inverse=True)
+                unique_indices += 1
+                unique_indices[-1] = 0 # prevent out of bounds
+                y = torch.where(z, unique_toks[unique_indices[1:req_len]], dix[1:req_len])
 
             x = torch.tensor(dix[:-1], dtype=torch.long)
-            y = torch.tensor(dix[1:], dtype=torch.long)
+            if args.my_pause_token == -1:
+                y = torch.tensor(dix[1:], dtype=torch.long)
 
             # if ii_orig < 50:
             #     # if rank == 1:
@@ -194,7 +203,7 @@ class MyDataset(Dataset):
             # else:
             #     exit(0)
 
-            if args.my_qa_mask == 1:
+            if args.my_qa_mask == 1 or args.my_pause_token != -1:
                 return x, y, z
 
             return x, y
