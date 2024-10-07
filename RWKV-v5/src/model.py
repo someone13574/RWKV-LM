@@ -1134,27 +1134,29 @@ class RWKV(pl.LightningModule):
                 #     print('rank', self.global_rank, 'loss', loss.item(), 'lavg', sss / ccc)#, 'tmp', tmp, 'input', idx)
         else:
             idx, targets, mask = batch
-            mask = mask.view(-1)[:-1]
+            mask = mask.view(-1)
             logits = self(idx)
             
             # Separate logits from predicted loss deltas
             # predicted_deltas = logits[:, :, args.my_pause_token].view(-1)[:-1]
-            logits = torch.cat((logits[:, :, :args.my_pause_token], logits[:, :, args.my_pause_token + 1:]), dim=-1)
+            # logits = torch.cat((logits[:, :, :args.my_pause_token], logits[:, :, args.my_pause_token + 1:]), dim=-1)
             
             # Calculate logit loss and estimated delta loss
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), reduction='none')
             
-            deltas = loss[1:] - loss[:-1]
+            # deltas = loss[1:] - loss[:-1]
             # mse_loss = F.mse_loss(predicted_deltas, deltas, reduction='none')
             # mse_loss = (mse_loss * mask).sum() / mask.sum() if mask.sum() > 0 else 0
             
             loss = L2Wrap.apply(loss.mean(), logits) # + mse_loss * 0.1
+            return {'loss': loss, 'non_pause_loss': (loss * mask).sum() / mask.sum()}
 
         return loss
 
     def training_step_end(self, batch_parts):
         if pl.__version__[0]!='2':
-            all = self.all_gather(batch_parts)
+            all = self.all_gather([x['loss'] for x in batch_parts])
+            self.trainer.my_non_pause_token_loss_all = self.all_gather([x['non_pause_loss'] for x in batch_parts])
             if self.trainer.is_global_zero:
                 self.trainer.my_loss_all = all
 

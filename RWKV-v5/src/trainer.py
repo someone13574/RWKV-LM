@@ -139,6 +139,7 @@ class train_callback(pl.Callback):
                 trainer.my_loss = outputs["loss"]
             else:
                 trainer.my_loss = trainer.my_loss_all.float().mean().item()
+                trainer.my_non_pause_token_loss = trainer.my_non_pause_token_loss_all.float().mean().item()
             trainer.my_loss_sum += trainer.my_loss
             trainer.my_loss_count += 1
             trainer.my_epoch_loss = trainer.my_loss_sum / trainer.my_loss_count
@@ -147,7 +148,7 @@ class train_callback(pl.Callback):
             # self.log("s", real_step, prog_bar=True, on_step=True)
 
             if len(args.wandb) > 0:
-                lll = {"loss": trainer.my_loss, "lr": trainer.my_lr, "wd": trainer.my_wd, "Gtokens": real_step * token_per_step / 1e9}
+                lll = {"loss": trainer.my_loss, "non_pause_token_loss": trainer.my_non_pause_token_loss, "lr": trainer.my_lr, "wd": trainer.my_wd, "Gtokens": real_step * token_per_step / 1e9}
                 if kt_s > 0:
                     lll["kt/s"] = kt_s
                 trainer.my_wandb.log(lll, step=int(real_step))
