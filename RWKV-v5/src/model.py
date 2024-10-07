@@ -1138,17 +1138,17 @@ class RWKV(pl.LightningModule):
             logits = self(idx)
             
             # Separate logits from predicted loss deltas
-            predicted_deltas = logits[:, :, args.my_pause_token].view(-1)[:-1]
+            # predicted_deltas = logits[:, :, args.my_pause_token].view(-1)[:-1]
             logits = torch.cat((logits[:, :, :args.my_pause_token], logits[:, :, args.my_pause_token + 1:]), dim=-1)
             
             # Calculate logit loss and estimated delta loss
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), reduction='none')
             
             deltas = loss[1:] - loss[:-1]
-            mse_loss = F.mse_loss(predicted_deltas, deltas, reduction='none')
-            mse_loss = (mse_loss * mask).sum() / mask.sum() if mask.sum() > 0 else 0
+            # mse_loss = F.mse_loss(predicted_deltas, deltas, reduction='none')
+            # mse_loss = (mse_loss * mask).sum() / mask.sum() if mask.sum() > 0 else 0
             
-            loss = L2Wrap.apply(loss.mean(), logits) + mse_loss * 0.1
+            loss = L2Wrap.apply(loss.mean(), logits) # + mse_loss * 0.1
 
         return loss
 
